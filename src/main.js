@@ -1,28 +1,55 @@
-// SUPER73 BLE helpers for the Puck.js REPL (Phase 1: replay the settings write).
-// Untested: written before the Puck arrived. Protocol: docs/protocol.md.
+// SUPER73 mode button for Puck.js (Phase 2, first version).
+// Protocol: docs/protocol.md. Flash with:  py tools/puck.py --flash src/main.js
 //
-// Send to RAM from the Espruino Web IDE, then in the left-hand console:
-//   bike.find()        scan 10 s, remember the bike (copy the printed id into BIKE_ID)
-//   bike.read()        connect, print SETTINGS, disconnect
-//   bike.setLight(1)   safest first write test: headlight on (0 = off)
-//   bike.setMode(4)    write mode, keep light/assist, verify, disconnect
+// Short press: mode 4 (EU EPAC, 25 km/h / 250 W) - the bike's power-on mode.
+// Long press (hold until the blue LED lights, >= 1 s): mode 7 (EU OFF-ROAD, unlimited,
+// not road legal in Austria).
 //
-// LED: green = write verified, red = failed. Every call disconnects at the end
-// and gives up after TIMEOUT_MS, so the radio never stays connected.
+// LEDs: blue while holding = long press armed. Short blinks while working.
+// Green = mode 4 set, blue = mode 7 set, 3x red = failed (bike off/out of range/busy).
+// Each press connects, bonds (Just Works, stored in flash), reads SETTINGS, writes
+// the mode keeping light/assist, verifies, disconnects. Gives up after TIMEOUT_MS,
+// retries once.
+//
+// REPL helpers (py tools/puck.py "..."): bike.read(), bike.setMode(m, allowUnrestricted)
 
-var BIKE_ID = "f5:14:76:b9:41:ba random"; // our S2 (random static address); bike.find() overwrites it
-var BOND = true;    // the S2 refuses reads/writes until bonded (Just Works), see docs/protocol.md
+var BIKE_ID = "f5:14:76:b9:41:ba random"; // our S2, random static address
+var DEFAULT_MODE = 4;   // EU EPAC
+var UNLIMITED_MODE = 7; // EU OFF-ROAD
+var LONG_PRESS_S = 1.0;
+var TIMEOUT_MS = 15000;
+var RETRIES = 1;
 
 var SVC = "00001554-1212-efde-1523-785feabcd123";
 var CHR_REGISTER_ID = "00001564-1212-efde-1523-785feabcd123";
 var CHR_REGISTER = "0000155f-1212-efde-1523-785feabcd123";
 var SETTINGS_ID = [0x03, 0x00];
-var LEGAL_MODE = 4; // EU EPAC, 25 km/h / 250 W
-var TIMEOUT_MS = 15000;
 
-function flash(led) {
-  led.set();
-  setTimeout(function () { led.reset(); }, 300);
+var busy = false;
+var working;
+var holdTimer;
+
+function blink(led, n, ms) {
+  var i = 0;
+  function step() {
+    if (i >= n * 2) return;
+    digitalWrite(led, (i & 1) ? 0 : 1);
+    i++;
+    setTimeout(step, ms);
+  }
+  step();
+}
+
+function startWorking(led) {
+  working = setInterval(function () {
+    led.set();
+    setTimeout(function () { led.reset(); }, 20);
+  }, 500);
+}
+
+function stopWorking() {
+  if (working) clearInterval(working);
+  working = undefined;
 }
 
 function hex(a) {
@@ -31,9 +58,12 @@ function hex(a) {
   return s.join(" ");
 }
 
-// Connect, run fn(chrRegisterId, chrRegister) -> Promise, always disconnect.
+function delay(ms) {
+  return new Promise(function (r) { setTimeout(r, ms); });
+}
+
+// Connect, bond, run fn(chrRegisterId, chrRegister) -> Promise, always disconnect.
 function session(fn) {
-  if (!BIKE_ID) return Promise.reject("BIKE_ID not set, run bike.find() first");
   return new Promise(function (resolve, reject) {
     var gatt, chrId, done = false;
     var timer = setTimeout(function () { finish("timeout"); }, TIMEOUT_MS);
@@ -42,12 +72,15 @@ function session(fn) {
       done = true;
       clearTimeout(timer);
       if (gatt && gatt.connected) gatt.disconnect();
-      if (err) { flash(LED1); reject(err); } else resolve(value);
+      if (err) reject(err); else resolve(value);
     }
     NRF.connect(BIKE_ID).then(function (g) {
       gatt = g;
       if (done) { gatt.disconnect(); throw "timeout"; }
-      return BOND ? gatt.startBonding() : null;
+      return gatt.startBonding(false).catch(function (e) {
+        print("bonding failed (" + e + "), re-pairing");
+        return gatt.startBonding(true);
+      });
     }).then(function () {
       return gatt.getPrimaryService(SVC);
     }).then(function (svc) {
@@ -71,54 +104,73 @@ function readSettings(chrId, chrReg) {
   });
 }
 
-// change: any of {light, assist, mode}; the rest is copied from the bike.
-function writeSettings(change) {
+function setMode(mode) {
   return session(function (chrId, chrReg) {
-    var want;
     return readSettings(chrId, chrReg).then(function (cur) {
-      print("Current " + cur.raw);
-      want = { light: cur.light, assist: cur.assist, mode: cur.mode };
-      for (var k in change) want[k] = change[k];
-      return chrReg.writeValue([0x00, 0xD1, want.light, want.assist, want.mode, 0, 0, 0, 0, 0]);
-    }).then(function () {
-      return new Promise(function (r) { setTimeout(r, 300); });
-    }).then(function () {
-      return readSettings(chrId, chrReg);
-    }).then(function (now) {
-      print("Now     " + now.raw);
-      if (now.light != want.light || now.assist != want.assist || now.mode != want.mode) throw "not applied";
-      flash(LED2);
-      return now;
+      print("bike: " + cur.raw);
+      if (cur.mode == mode) return cur;
+      return chrReg.writeValue([0x00, 0xD1, cur.light, cur.assist, mode, 0, 0, 0, 0, 0]).then(function () {
+        return delay(300);
+      }).then(function () {
+        return readSettings(chrId, chrReg);
+      }).then(function (now) {
+        print("now:  " + now.raw);
+        if (now.mode != mode) throw "mode not applied";
+        return now;
+      });
     });
   });
 }
 
-function report(e) { print("Failed: " + e); }
+function attempt(mode, retries) {
+  return setMode(mode).catch(function (e) {
+    if (retries <= 0) throw e;
+    print("retrying after: " + e);
+    return attempt(mode, retries - 1);
+  });
+}
+
+function onPress(isLong) {
+  if (busy) { blink(LED1, 1, 80); return; }
+  var mode = isLong ? UNLIMITED_MODE : DEFAULT_MODE;
+  var led = isLong ? LED3 : LED2;
+  busy = true;
+  print((isLong ? "long" : "short") + " press -> mode " + mode);
+  startWorking(led);
+  attempt(mode, RETRIES).then(function (s) {
+    stopWorking();
+    busy = false;
+    print("mode " + s.mode + " ok");
+    blink(led, 1, 600);
+  }, function (e) {
+    stopWorking();
+    busy = false;
+    print("failed: " + e);
+    blink(LED1, 3, 150);
+  });
+}
+
+setWatch(function (e) {
+  if (e.state) {
+    holdTimer = setTimeout(function () { holdTimer = undefined; LED3.set(); }, LONG_PRESS_S * 1000);
+  } else {
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = undefined;
+    LED3.reset();
+    onPress(e.time - e.lastTime >= LONG_PRESS_S);
+  }
+}, BTN, { edge: "both", repeat: true, debounce: 50 });
 
 var bike = {
-  find: function () {
-    return NRF.requestDevice({
-      filters: [{ services: [SVC] }, { namePrefix: "SUPER73" }, { namePrefix: "Super73" }],
-      active: true,
-      timeout: 10000
-    }).then(function (dev) {
-      BIKE_ID = dev.id;
-      print("Found " + dev.name + " at " + dev.id);
-    }).catch(report);
-  },
   read: function () {
     return session(readSettings).then(function (s) {
       print(s.raw + "  mode " + s.mode + ", assist " + s.assist + ", light " + s.light);
-    }).catch(report);
-  },
-  setLight: function (on) {
-    return writeSettings({ light: on ? 1 : 0 }).catch(report);
+    }).catch(function (e) { print("failed: " + e); });
   },
   setMode: function (mode, allowUnrestricted) {
-    if (!(mode >= 0 && mode <= 7)) return Promise.reject("mode must be 0-7").catch(report);
-    if (mode != LEGAL_MODE && !allowUnrestricted) {
-      return Promise.reject("mode " + mode + " is above the Austrian pedelec limit, use bike.setMode(" + mode + ", true)").catch(report);
-    }
-    return writeSettings({ mode: mode }).catch(report);
+    if (!(mode >= 0 && mode <= 7)) return print("mode must be 0-7");
+    if (mode != DEFAULT_MODE && !allowUnrestricted) return print("use bike.setMode(" + mode + ", true)");
+    return setMode(mode).then(function (s) { print("mode " + s.mode + " ok"); },
+                              function (e) { print("failed: " + e); });
   }
 };
