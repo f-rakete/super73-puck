@@ -19,9 +19,10 @@ read-only, and the protocol work in
 
 ## Status
 
-Phase 1: the write command is known from Walker73 (`00 D1 <light> <assist> <mode> 00…`
-written to `0000155f-…`) but **not yet proven on our bike**. That proof is the
-gate for everything else.
+Phase 1: the write command from Walker73 (`00 D1 <light> <assist> <mode> 00…`
+written to `0000155f-…`) **works on our S2** (2026-11-16). It needs Just Works
+bonding first. Still open: power-on behaviour, reconnect time and idle auto-off
+(`phase1b-test.cmd`). See the "Confirmed on our S2" section in `docs/protocol.md`.
 
 ## Phase 1 test from Windows
 

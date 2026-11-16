@@ -10,8 +10,8 @@
 // LED: green = write verified, red = failed. Every call disconnects at the end
 // and gives up after TIMEOUT_MS, so the radio never stays connected.
 
-var BIKE_ID = null; // e.g. "aa:bb:cc:dd:ee:ff public", from bike.find()
-var BOND = false;   // set true if the bike rejects reads/writes with an authentication error
+var BIKE_ID = "f5:14:76:b9:41:ba random"; // our S2 (random static address); bike.find() overwrites it
+var BOND = true;    // the S2 refuses reads/writes until bonded (Just Works), see docs/protocol.md
 
 var SVC = "00001554-1212-efde-1523-785feabcd123";
 var CHR_REGISTER_ID = "00001564-1212-efde-1523-785feabcd123";

@@ -58,9 +58,9 @@ class Abort(Exception):
     """Stop the whole test."""
 
 
-def setup_logging() -> Path:
+def setup_logging(prefix: str = "phase1") -> Path:
     LOG_DIR.mkdir(exist_ok=True)
-    path = LOG_DIR / f"phase1-{datetime.now():%Y%m%d-%H%M%S}.log"
+    path = LOG_DIR / f"{prefix}-{datetime.now():%Y%m%d-%H%M%S}.log"
     file_fmt = logging.Formatter("%(asctime)s.%(msecs)03d %(message)s", "%H:%M:%S")
     fh = logging.FileHandler(path, encoding="utf-8")
     fh.setFormatter(file_fmt)
@@ -152,6 +152,8 @@ class Session:
         self.frames: list[tuple[float, bytes]] = []
         self.original: Settings | None = None
         self.mode_dirty = False  # a mode other than LEGAL_MODE was written and not reverted
+        self.quiet = False  # True: non-SETTINGS notifications go to the log file only
+        self.t_on: float | None = None  # monotonic time of the last power-on, if known
 
     # --- connection -------------------------------------------------------
 
@@ -162,7 +164,8 @@ class Session:
         frame = bytes(data)
         self.frames.append((time.monotonic(), frame))
         extra = f"  -> {Settings(frame)}" if is_settings(frame) else ""
-        log(f"  notify {REGISTER_NAMES.get(frame[:2], '?'):8} {frame.hex(' ')}{extra}")
+        emit = LOG.debug if self.quiet and not is_settings(frame) else LOG.info
+        emit(f"  notify {REGISTER_NAMES.get(frame[:2], '?'):8} {frame.hex(' ')}{extra}")
         if is_settings(frame):
             self.settings_q.put_nowait(frame)
 
@@ -349,12 +352,12 @@ async def step_mode(s: Session) -> None:
 async def step_display_buttons(s: Session) -> None:
     """Do changes made on the bike's own buttons show up as notifications? (20 s)"""
     await s.ensure_connected()
-    await pause("For the next 20 s press the assist +/- and light buttons on the bike a few times. Press Enter to start")
     start = time.monotonic()
+    await pause("Press Enter first, THEN press the assist +/- and light buttons on the bike a few times (20 s)")
     await asyncio.sleep(20)
     n = sum(1 for t, f in s.frames if t >= start and is_settings(f))
-    log(f"  {n} SETTINGS notifications during the 20 s")
-    s.results["bike buttons -> notifications"] = f"{n} SETTINGS frames in 20 s"
+    log(f"  {n} SETTINGS notifications during this step")
+    s.results["bike buttons -> notifications"] = f"{n} SETTINGS frames"
 
 
 async def step_restore(s: Session) -> None:
@@ -455,24 +458,27 @@ STEPS = [
 REQUIRED = {step_scan, step_connect}
 
 
-async def main() -> None:
-    path = setup_logging()
-    log("SUPER73 Phase 1 test")
+CHECKLIST_HA = "  - Home Assistant: hasuper73 integration DISABLED (Settings > Devices & services)"
+CHECKLIST_APP = "  - phone: SUPER73 app closed (or phone Bluetooth off)"
+
+
+async def run(title: str, prefix: str, checklist: list[str], steps: list, required: set) -> None:
+    """Log setup, checklist, run the steps, safety reset, results."""
+    path = setup_logging(prefix)
+    log(title)
     log(f"log: {path}")
     LOG.debug(f"python {sys.version.split()[0]}, bleak {importlib.metadata.version('bleak')}, {platform.platform()}")
     log("")
     log("Before starting:")
-    log("  - bike switched ON, parked next to this PC (on its stand, nobody riding it)")
-    log("  - Home Assistant: hasuper73 integration DISABLED (Settings > Devices & services)")
-    log("  - phone: SUPER73 app closed (or phone Bluetooth off)")
-    log("Steps 1-10 take about 5 minutes; 11 and 12 are optional. Ctrl+C aborts (then press Enter).")
+    for line in checklist:
+        log(line)
     await pause("Ready?")
 
     s = Session()
     try:
-        for i, step in enumerate(STEPS, 1):
+        for i, step in enumerate(steps, 1):
             log("")
-            log(f"=== {i}/{len(STEPS)} {step.__doc__} ===")
+            log(f"=== {i}/{len(steps)} {step.__doc__} ===")
             try:
                 await step(s)
             except Abort:
@@ -481,7 +487,7 @@ async def main() -> None:
                 log(f"  STEP FAILED: {type(err).__name__}: {err}")
                 LOG.debug(traceback.format_exc())
                 s.results[f"step {i} error"] = f"{type(err).__name__}: {err}"
-                if step in REQUIRED:
+                if step in required:
                     raise Abort(f"required step {i} failed") from err
                 if await ask("Continue with the next step?") == "n":
                     raise Abort("stopped by user") from err
@@ -506,6 +512,15 @@ async def main() -> None:
             log(f"!!! The bike may still be in mode {TEST_MODE}. Run:  py tools\\set_mode.py --mode {LEGAL_MODE}")
         log("")
         log(f"Done. Tell Claude the test finished; the log is {path}")
+
+
+async def main() -> None:
+    await run("SUPER73 Phase 1 test", "phase1", [
+        "  - bike switched ON, parked next to this PC (on its stand, nobody riding it)",
+        CHECKLIST_HA,
+        CHECKLIST_APP,
+        "Steps 1-10 take about 5 minutes; 11 and 12 are optional. Ctrl+C aborts (then press Enter).",
+    ], STEPS, REQUIRED)
 
 
 if __name__ == "__main__":

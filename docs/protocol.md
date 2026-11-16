@@ -9,8 +9,28 @@ What we know about the bike's GATT interface, put together from:
   but that page returned **404** on 2026-11-16, so the GitHub wiki is what we have.
 - **hasuper73** 0.1.4 `custom_components/super73/` (https://github.com/f-rakete/hasuper73)
 
-Nothing in this file has been tested on our S2 yet. Tick off the checklist at
-the end as things get confirmed.
+The first test run on our S2 is summarised in the next section. Everything
+after it is the protocol as the sources describe it, with notes where our bike
+differs.
+
+## Confirmed on our S2 (2026-11-16)
+
+From `tools/phase1_test.py` (log `logs/phase1-20261116-154146.log`, not in git).
+
+| What | Result |
+|---|---|
+| **Settings write** | **Works.** Light on → off and mode 4 → 5 → 4, each confirmed by a SETTINGS notification and a re-read. The light visibly switched |
+| Ride mode effect | Confirmed only by the mode the bike reports. The S2 has no mode display, so the effect on assist is untested |
+| Pairing | **Required.** The first read fails with *Insufficient Authentication*. Just Works bonding fixes it (Windows: protection level ENCRYPTION, no PIN). Puck: `gatt.startBonding()` |
+| Connections | The bike **stops advertising while connected**, so most likely one central at a time |
+| Address | `F5:14:76:B9:41:BA`, **random static** (Windows address type 1). Puck: `NRF.connect("f5:14:76:b9:41:ba random")` |
+| Advertising | Name `SUPER73`. Metrics UUID **not** advertised, so match by name. Manufacturer data company `0x020F`: `11 33 a8 90 ea bf e9 ba`. Rough interval 0.4–1.5 s |
+| Device info | `COMODULE`, hardware `v3.2.0`, firmware and software `221122` (same as Walker73's bike) |
+| Timing (Windows) | Connect 6.1 s, first read incl. pairing 8.9 s. Write ack 90–270 ms, SETTINGS notification 0.3–1.1 s after the write |
+| MTU | 247 |
+| Bike's own buttons | Assist +/- and light on the bike push SETTINGS notifications, so the Puck can track state without polling |
+| POWER notifications | About every 1.2 s while connected (the voltage changes constantly) |
+| Unclear | About 2 min into the test the bike dropped a fresh connection after 0.6 s and stopped advertising, probably auto-off. Measured in `tools/phase1b_test.py` |
 
 ## Discovery
 
@@ -58,11 +78,11 @@ hasuper73 polls in the order SETTINGS, TOTAL, RIDE, POWER, MOTION, MYSTERY.
 
 | Register | ID | Fields | Decoding |
 |---|---|---|---|
-| SETTINGS | `03 00` | d2 assist, d3 walk, d4 light, d5 mode | assist 0–4. light `01` = on. mode 0–7. walk: Walker73/hasuper73 set `walk = (d3 == 0x00)`, the wiki says "0/90?", so the meaning is unclear |
+| SETTINGS | `03 00` | d2 assist, d3 walk, d4 light, d5 mode | assist 0–4. light `01` = on. mode 0–7. walk: Walker73/hasuper73 set `walk = (d3 == 0x00)`, the wiki says "0/90?". Our S2 sent `d3 = 00` the whole time with walk mode off, so that check is probably **inverted** |
 | MOTION | `02 01` | d2–d3 | u16 LE wheel speed, ÷100 = km/h |
-| TOTAL | `02 02` | d6–d7 | u16 LE odometer, ÷10 = km. d3 flickers `4E`/`4D` while the motor runs |
+| TOTAL | `02 02` | d6–d7 | u16 LE odometer, ÷10 = km. d3 flickers `4E`/`4D` while the motor runs (our S2: `24` standing still) |
 | RIDE | `02 03` | d3 cadence, d8 range | cadence ×5 = pedal rpm. d8 = range in km (hasuper73 also derives battery % from it against a 60 km base range). d2 looks torque-related |
-| POWER | `04 01` | d6–d7 | u16 LE charge current, ÷1000 = A. The wiki table marks d5–d6, but both codebases read `[6:8]` |
+| POWER | `04 01` | d2–d3, d6–d7 | d6–d7: u16 LE charge current, ÷1000 = A (the wiki table marks d5–d6, but both codebases read `[6:8]`). **d2–d3: u16 LE battery voltage in mV (very likely).** Our S2: `aa d2` = 53.93 V, sagging to 53.82 V with the headlight on and recovering when it's off. Neither codebase uses this yet |
 | MYSTERY | `00 00` | d2 light, d3 assist, d4 mode | Same field order as the settings write below. Probably the last commanded settings (guess) |
 | – | `00 01` … `00 06` | – | Respond, always all zeros |
 
@@ -89,8 +109,9 @@ Write **10 bytes to `REGISTER`** (`0000155f-…`), **with response**
   unimplemented, meaning 0 km/h / 0 W / 0 % assist.
 - Walker73 does no pairing and no security-service handshake before writing.
   hasuper73 0.1.1 added "pair and retry on *Insufficient authentication*" for
-  register reads, so at least some bike/backend combinations need an encrypted
-  (bonded) link. `tools/set_mode.py` does the same.
+  register reads. **Our S2 needs that bonded, encrypted link.** Just Works
+  pairing is enough; the security service is not involved.
+  `tools/set_mode.py` pairs and retries the same way.
 
 ### Other writable IDs (unknown – do not write on a bike you ride)
 
@@ -141,22 +162,27 @@ road-legal mode**. Everything else needs a deliberate opt-in in our tools.
   the Puck has to re-apply its mode on every connect.
 - **Auto-off:** the wiki says about 16 min of inactivity. Throttle counts as
   activity. Light toggles, PAS changes, a short wheel spin and pedalling under
-  20 km/h without PAS do not. hasuper73 observed 5 min idle. Measure on our S2.
-- **Connection count:** unknown. hasuper73 polls every 10 s and keeps its
-  connection open, so if the display takes only one central, HA blocks both the
-  Puck and the official app.
+  20 km/h without PAS do not. hasuper73 observed 5 min idle. On our S2 the bike
+  apparently switched off a few minutes into the first test; phase 1b measures it.
+- **Connection count:** our S2 stops advertising while a central is connected,
+  so it almost certainly takes one connection at a time. hasuper73 polls every
+  10 s and keeps its connection open, so while HA is connected it blocks both
+  the Puck and the official app.
 - **Connection interval:** the PPCP asks for 15–45 ms. A slow idle interval for
   the Puck (Phase 3, e.g. 200 ms+) may be rejected or renegotiated. Test it.
 
 ## To verify on our S2
 
-- [ ] Advertising: name, metrics UUID advertised?, address type (public/random)
-- [ ] Device info: hardware ___ / firmware ___ / software ___
-- [ ] SETTINGS read works without pairing (Windows/bleak)
-- [ ] Settings write `00 D1 …` accepted: light toggle
-- [ ] Settings write `00 D1 …` accepted: mode change (verify via notifier and re-read)
-- [ ] Pairing/bonding required? On Windows? On the Puck?
-- [ ] Simultaneous centrals: Puck + HA + app
-- [ ] Mode reset on power-on (EU)
-- [ ] Idle auto-off: 5 min or 16 min?
+- [x] Advertising: name `SUPER73`, metrics UUID not advertised, random static address
+- [x] Device info: hardware `v3.2.0` / firmware `221122` / software `221122`
+- [x] SETTINGS read without pairing: **no**, Just Works bonding required (Windows)
+- [x] Settings write `00 D1 …` accepted: light toggle (seen on the bike)
+- [x] Settings write `00 D1 …` accepted: mode change (via notifier and re-read)
+- [ ] Mode change has a real effect on assist (S2 shows no mode; needs a stand or ride test)
+- [ ] Bonding from the Puck (`startBonding()`)
+- [x] Simultaneous centrals: bike stops advertising while connected, so one at a time
+- [ ] Bond from the first run reused on reconnect (phase 1b)
+- [ ] Reconnect by address time (phase 1b)
+- [ ] Mode reset on power-on (EU) (phase 1b)
+- [ ] Idle auto-off: 5 min or 16 min? Does a connection keep it awake? (phase 1b)
 - [ ] Slowest connection interval the bike accepts
