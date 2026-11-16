@@ -111,6 +111,9 @@ Write **10 bytes to `REGISTER`** (`0000155f-…`), **with response**
   light off and resets assist.
 - The bike answers with a SETTINGS (`03 00`) frame on the notifier. Walker73's
   wiki calls this the "3-0 notification".
+- **The SETTINGS register lags the write.** On our S2 a re-read 0.3 s after the
+  write still showed the old mode; the new one appears within about 0.3–1.5 s.
+  Poll, or wait for the notification, before deciding a write failed.
 - **Never write mode ≥ 8 or assist ≥ 5.** The wiki lists those as
   unimplemented, meaning 0 km/h / 0 W / 0 % assist.
 - Walker73 does no pairing and no security-service handshake before writing.

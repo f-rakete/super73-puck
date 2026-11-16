@@ -82,11 +82,21 @@ function session(fn) {
       if (done) return;
       done = true;
       clearTimeout(timer);
-      if (gatt && gatt.connected) gatt.disconnect();
-      if (err) reject(err); else resolve(value);
+      var settled = false;
+      function end() {
+        if (settled) return;
+        settled = true;
+        if (err) reject(err); else resolve(value);
+      }
+      // resolve only once the link is down, so a retry can connect again
+      if (gatt && gatt.connected) {
+        gatt.disconnect().then(end, end);
+        setTimeout(end, 3000);
+      } else end();
     }
     log("connecting");
-    NRF.connect(BIKE_ID).then(function (g) {
+    // the bike asks for 15-45 ms (PPCP); Espruino's default is slower and makes GATT discovery take seconds
+    NRF.connect(BIKE_ID, { minInterval: 15, maxInterval: 45 }).then(function (g) {
       gatt = g;
       if (done) { gatt.disconnect(); throw "timeout"; }
       log("connected");
@@ -118,15 +128,24 @@ function readSettings(chrId, chrReg) {
   });
 }
 
+// The SETTINGS register shows a new mode only after ~0.3-1.5 s, so poll for it.
+function waitForMode(chrId, chrReg, mode, tries) {
+  return delay(300).then(function () {
+    return readSettings(chrId, chrReg);
+  }).then(function (now) {
+    if (now.mode == mode || tries <= 1) return now;
+    return waitForMode(chrId, chrReg, mode, tries - 1);
+  });
+}
+
 function setMode(mode) {
   return session(function (chrId, chrReg) {
     return readSettings(chrId, chrReg).then(function (cur) {
       log("bike: " + cur.raw);
       if (cur.mode == mode) return cur;
       return chrReg.writeValue([0x00, 0xD1, cur.light, cur.assist, mode, 0, 0, 0, 0, 0]).then(function () {
-        return delay(300);
-      }).then(function () {
-        return readSettings(chrId, chrReg);
+        log("written");
+        return waitForMode(chrId, chrReg, mode, 8);
       }).then(function (now) {
         log("now:  " + now.raw);
         if (now.mode != mode) throw "mode not applied";
