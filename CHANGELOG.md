@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **BTHome v2 adverts** (`src/main.js`): battery %, battery voltage and
+  temperature (sampled every 10 min, not during or right after a press), and
+  a `press` / `long_press` button event for ~10 s after each press. Not
+  flagged "sleepy", so HA can tell when the Puck is gone (presence).
+- Adverts no longer carry Espruino's default manufacturer ID, so the name
+  `S73 Puck` fits next to the BTHome data.
+- **`tools/phase4_test.py`** (`phase4-test.cmd`): guided test for the adverts,
+  HA discovery, button events and presence timing.
+
 ## 0.1.0 - 2026-11-16
 
 First working version: the button changes the bike's ride mode.

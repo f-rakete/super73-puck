@@ -40,7 +40,7 @@ History: CHANGELOG.md.
 |---|---|---|
 | Model | SUPER73 S2, Comodule display hw `v3.2.0`, fw `221122` | Puck.js **v2.1**, firmware **2v27** (latest: 2v29) |
 | Address | `f5:14:76:b9:41:ba`, random static | `fb:10:30:41:7f:86` |
-| Advertises | `SUPER73`, no service UUID, about every 0.4–1.5 s | `S73 Puck`, every 2 s |
+| Advertises | `SUPER73`, no service UUID, about every 0.4–1.5 s | `S73 Puck` + BTHome v2 (battery, V, °C, button), every 2 s |
 | Notes | Just Works bonding required; one connection at a time | Firmware in `.bootcde`; came with the stock "BTHome Button" app (replaced) |
 
 ## Puck workflow
@@ -74,13 +74,39 @@ py tools\puck.py --address FB:10:30:41:7F:86 "bike.read()" --wait 20 # bike must
 - The mode resets to 4 at power-on and is kept across BLE disconnects.
 - The bike stops advertising while connected. hasuper73 keeps its connection
   open, so **Puck presses fail while HA is connected**.
+- Espruino 2v26+ adds its manufacturer ID (4 bytes) to every advert. With
+  BTHome data that cut the name to `S73 Puc`, so `main.js` sets
+  `manufacturer: false`. The advert is 28 bytes, 30 with a button event (max 31).
+- This PC's scanner (bleak/WinRT, active or passive) catches only a fraction
+  of the Puck's 2 s adverts, sometimes none for 30–50 s, while the Puck logs no
+  connections. Don't judge the Puck's advertising from the PC; HA is the real
+  receiver.
+- HA (habluetooth) marks a device unavailable ~3 min after its last advert,
+  checked every 5 min, so presence "away" lags 3–8 min. The BTHome "sleepy"
+  flag must stay clear, or HA keeps the entities available forever.
 
-## Next steps (recommended order; Flo hasn't picked yet)
+## Next steps
 
+**Done: Phase 4, BTHome** (2026-11-16): battery %, voltage, temperature every
+10 min, button events, presence via HA availability. Fields agreed with Flo:
+no ride mode (the Puck can't know it), keep the name `S73 Puck`, include
+temperature. Verified in HA's history: values every 10 min, one event per
+`press` / `long_press`, presence (unavailable 6.7 min after going silent,
+back immediately). HA
+device renamed to `S73 Puck`: `sensor.s73_puck_batterie`, `…_spannung`,
+`…_temperatur`, `event.s73_puck_taste`. The HA config entry is
+`01M7JW9HRDVJQKZ6VJGMGZ3F0C`.
+
+**HA access:** `ssh -i ~/.ssh/id_ed25519_hass root@192.168.1.3` (SSH add-on,
+HA 2026.11, German UI). The add-on has no Core API access; read state history
+from `/config/home-assistant_v2.db` with `sqlite3 -readonly` (`apk add sqlite`
+first; it's gone after an add-on restart). Don't edit `.storage` while HA runs.
+
+Next (recommended order; Flo hasn't picked yet):
 1. **hasuper73 coexistence:** in `f-rakete/hasuper73`, connect, read and
    disconnect instead of holding the connection, so the Puck can get in.
-2. **Phase 4, BTHome:** the Puck advertises its battery, button presses, the
-   current mode, and a theft alert (motion while parked) to HA.
+2. **Theft alert** (motion while parked): accelerometer, about +40 µA, so
+   battery life drops from ~1–1.5 years to ~5 months. Flo's call.
 3. **Phase 3, pre-connect on motion:** about 1 s per press, at the cost of
    battery and holding the bike's only connection.
 

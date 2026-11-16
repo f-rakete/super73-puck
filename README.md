@@ -15,9 +15,9 @@ read-only, and the protocol work in
 |---|---|
 | `docs/protocol.md` | GATT services, register frames, settings-write payload, ride modes, open questions |
 | `tools/set_mode.py` | PC test tool (Python + bleak): read settings, write mode/light, verify |
-| `src/main.js` | Puck.js button firmware (Phase 2): short press = mode 4, long press = mode 7 |
+| `src/main.js` | Puck.js button firmware: short press = mode 4, long press = mode 7; BTHome adverts for HA |
 | `tools/puck.py` | Puck console from the PC: run JS, read output, `--flash src/main.js` |
-| `tools/phase1_test.py`, `phase1b_test.py` | Guided bike tests that log to `logs/` |
+| `tools/phase1_test.py`, `phase1b_test.py`, `phase4_test.py` | Guided tests that log to `logs/` |
 | `CLAUDE.md` | Working notes for continuing in a new Claude session: devices, workflow, gotchas, next steps |
 | `CHANGELOG.md`, `VERSION` | Release history (current: 0.1.0) |
 
@@ -32,10 +32,14 @@ from the PC with `tools/puck.py`. `bike.log()` shows the last presses with timin
 keeps its connection open. While Home Assistant is connected to the bike,
 button presses fail with red.
 
+Phase 4 (in progress, 2026-11-16): the Puck's adverts carry BTHome data for
+Home Assistant (see below). Guided test: `phase4-test.cmd`.
+
 Next steps (recommended order):
 1. Make hasuper73 connect, read and disconnect instead of holding the
    connection.
-2. Phase 4: BTHome adverts for HA (Puck battery, presses, mode, theft alert).
+2. Theft alert (motion while parked). Needs the accelerometer, about +40 µA,
+   so battery life drops from ~1–1.5 years to ~5 months.
 3. Phase 3: connect ahead on motion for faster presses.
 
 Phase 1: the write command from Walker73 (`00 D1 <light> <assist> <mode> 00…`
@@ -44,6 +48,31 @@ bonding first. The mode resets to 4 at every power-on but survives a
 disconnect. Still open: idle auto-off (`phase1b-test.cmd`, step 4) and whether
 mode 5 really changes the assist. See the "Confirmed on our S2" section in
 `docs/protocol.md`.
+
+## Home Assistant (BTHome)
+
+The Puck advertises BTHome v2 every 2 s, unencrypted: battery %, battery
+voltage and temperature (sampled every 10 min), plus a button event (`press` /
+`long_press`) for about 10 s after a press. HA discovers it as a BTHome device
+named `S73 Puck 7F86`; ours is renamed to `S73 Puck`, so its entities are
+`sensor.s73_puck_batterie`, `…_spannung`, `…_temperatur` and
+`event.s73_puck_taste` (German UI). The ride mode is not sent: the Puck only
+knows what it last set, and hasuper73 reads the real value.
+
+**Presence:** HA marks the Puck's entities unavailable when it stops hearing
+it: about 3–8 minutes after it leaves (HA's Bluetooth stack drops a device
+after ~3 min and checks every 5 min), and available again with the first
+advert. Measured 2026-11-16: unavailable 6.7 min after the Puck went silent,
+back within a second of its first advert. A presence sensor (Settings >
+Devices & services > Helpers > Template, or YAML):
+
+```yaml
+template:
+  - binary_sensor:
+      - name: "SUPER73 home"
+        device_class: presence
+        state: "{{ states('sensor.s73_puck_batterie') not in ['unavailable', 'unknown'] }}"
+```
 
 ## Phase 1 test from Windows
 

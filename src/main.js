@@ -11,6 +11,11 @@
 // the mode keeping light/assist, verifies, disconnects. Gives up after TIMEOUT_MS,
 // retries once.
 //
+// BTHome v2 (Home Assistant): every advert carries battery %, battery voltage and
+// temperature (sampled every 10 min); a press adds a button event (press / long press)
+// for ~10 s after the press. Not flagged "sleepy", so HA marks the Puck unavailable
+// when it is out of range (presence).
+//
 // REPL helpers (py tools/puck.py "..."): bike.log(), bike.read(), bike.setMode(m, allowUnrestricted)
 // Connecting to the bike drops a console connection to the Puck, so everything a
 // press does is kept in a RAM log: read it afterwards with bike.log().
@@ -21,6 +26,8 @@ var UNLIMITED_MODE = 7; // EU OFF-ROAD
 var LONG_PRESS_S = 1.0;
 var TIMEOUT_MS = 15000;
 var RETRIES = 1;
+var SAMPLE_MS = 600000; // battery/temperature every 10 min
+var EVENT_MS = 10000;   // keep a button event in the adverts this long after a press
 
 var SVC = "00001554-1212-efde-1523-785feabcd123";
 var CHR_REGISTER_ID = "00001564-1212-efde-1523-785feabcd123";
@@ -32,6 +39,9 @@ var working;
 var holdTimer;
 var LOG = [];
 var opStart = 0;
+var sensors;
+var packetId = 0;
+var lastPressEnd = 0;
 
 function log(s) {
   var line = new Date().toISOString().substr(11, 8) + " +" + (getTime() - opStart).toFixed(1) + "s " + s;
@@ -163,6 +173,34 @@ function attempt(mode, retries) {
   });
 }
 
+// BTHome v2 service data (bthome.io/format): no encryption, not "sleepy" (bit 2 clear),
+// objects in ascending id order. event: 1 = press, 4 = long press. 30 of 31 advert bytes.
+function bthome(event) {
+  packetId = (packetId + 1) & 255; // HA drops repeats of the same packet id
+  var t = Math.round(sensors.temp * 100), v = Math.round(sensors.volt * 1000);
+  var d = [0x40, 0x00, packetId, 0x01, sensors.battery, 0x02, t & 255, (t >> 8) & 255, 0x0C, v & 255, (v >> 8) & 255];
+  if (event) d.push(0x3A, event);
+  return d;
+}
+
+// Own name (the previous owner's app left "Sensor"). Not "SUPER73...": hasuper73 and
+// tools/ find the bike by that prefix. 2 s advertising interval keeps idle power low.
+// No Espruino manufacturer data (2v26+ default): its 4 bytes would cut the name short.
+function advertise(event) {
+  NRF.setAdvertising({ 0xFCD2: bthome(event) }, { name: "S73 Puck", interval: 2000, manufacturer: false });
+}
+
+function sample() {
+  sensors = { battery: E.getBattery(), volt: NRF.getBattery(), temp: E.getTemperature() };
+  advertise();
+}
+
+function pressDone() {
+  busy = false;
+  lastPressEnd = getTime();
+  setTimeout(function () { if (!busy) advertise(); }, EVENT_MS);
+}
+
 function onPress(isLong) {
   if (busy) { blink(LED1, 1, 80); return; }
   var mode = isLong ? UNLIMITED_MODE : DEFAULT_MODE;
@@ -170,23 +208,26 @@ function onPress(isLong) {
   busy = true;
   opStart = getTime();
   log((isLong ? "long" : "short") + " press -> mode " + mode);
+  advertise(isLong ? 4 : 1);
   startWorking(led);
   attempt(mode, RETRIES).then(function (s) {
     stopWorking();
-    busy = false;
+    pressDone();
     log("OK mode " + s.mode);
     blink(led, 1, 600);
   }, function (e) {
     stopWorking();
-    busy = false;
+    pressDone();
     log("FAILED: " + e);
     blink(LED1, 3, 150);
   });
 }
 
-// Own name (the previous owner's app left "Sensor"). Not "SUPER73...": hasuper73 and
-// tools/ find the bike by that prefix. 2 s advertising interval keeps idle power low.
-NRF.setAdvertising({}, { name: "S73 Puck", interval: 2000 });
+sample();
+// the coin cell's voltage sags during and shortly after a press: skip those samples
+setInterval(function () {
+  if (!busy && getTime() - lastPressEnd > 60) sample();
+}, SAMPLE_MS);
 
 setWatch(function (e) {
   if (e.state) {
