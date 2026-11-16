@@ -21,8 +21,10 @@ read-only, and the protocol work in
 
 Phase 1: the write command from Walker73 (`00 D1 <light> <assist> <mode> 00…`
 written to `0000155f-…`) **works on our S2** (2026-11-16). It needs Just Works
-bonding first. Still open: power-on behaviour, reconnect time and idle auto-off
-(`phase1b-test.cmd`). See the "Confirmed on our S2" section in `docs/protocol.md`.
+bonding first. The mode resets to 4 at every power-on but survives a
+disconnect. Still open: idle auto-off (`phase1b-test.cmd`, step 4) and whether
+mode 5 really changes the assist. See the "Confirmed on our S2" section in
+`docs/protocol.md`.
 
 ## Phase 1 test from Windows
 

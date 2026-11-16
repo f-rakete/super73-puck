@@ -15,7 +15,8 @@ differs.
 
 ## Confirmed on our S2 (2026-11-16)
 
-From `tools/phase1_test.py` (log `logs/phase1-20261116-154146.log`, not in git).
+From `tools/phase1_test.py` and `tools/phase1b_test.py` (logs
+`logs/phase1-20261116-154146.log` and `logs/phase1b-20261116-155321.log`, not in git).
 
 | What | Result |
 |---|---|
@@ -30,7 +31,12 @@ From `tools/phase1_test.py` (log `logs/phase1-20261116-154146.log`, not in git).
 | MTU | 247 |
 | Bike's own buttons | Assist +/- and light on the bike push SETTINGS notifications, so the Puck can track state without polling |
 | POWER notifications | About every 1.2 s while connected (the voltage changes constantly) |
-| Unclear | About 2 min into the test the bike dropped a fresh connection after 0.6 s and stopped advertising, probably auto-off. Measured in `tools/phase1b_test.py` |
+| **Mode after power-on** | **Resets to 4.** Mode 5 was written, the bike switched off and on, and it came back in mode 4. Assist (4) and light (off) were the same before and after, so whether they persist is unknown |
+| **Mode across a BLE disconnect** | **Kept.** Observed by Flo with the official app. Only a power cycle resets it |
+| First advert after power-on | 2.6–4.4 s |
+| Bond reuse | Yes. Reconnects after the first pairing needed no new pairing |
+| Reconnect (Windows) | 4.2–8.7 s by address, including Windows' own scan and service discovery. 3.9–5.2 s from a fresh scan result |
+| Auto-off | Not measured yet (the phase 1b idle test was skipped). In the first run the bike disappeared about 2 min in, probably auto-off |
 
 ## Discovery
 
@@ -157,13 +163,15 @@ road-legal mode**. Everything else needs a deliberate opt-in in our tools.
 
 ## Behaviour
 
-- **EU mode reset:** Walker73 advertises "auto applies previous settings, bypass
-  EU mode reset". That implies EU bikes go back to mode 4 at every power-on, so
-  the Puck has to re-apply its mode on every connect.
+- **EU mode reset (confirmed on our S2):** the bike comes back in mode 4 after
+  every power-on, but keeps a written mode across BLE disconnects. So the Puck
+  can connect, write and disconnect, and has to write again after each
+  power-on. As a side effect, switching the bike off and on is always a way
+  back to the legal mode.
 - **Auto-off:** the wiki says about 16 min of inactivity. Throttle counts as
   activity. Light toggles, PAS changes, a short wheel spin and pedalling under
   20 km/h without PAS do not. hasuper73 observed 5 min idle. On our S2 the bike
-  apparently switched off a few minutes into the first test; phase 1b measures it.
+  apparently switched off a few minutes into the first test. Not measured yet.
 - **Connection count:** our S2 stops advertising while a central is connected,
   so it almost certainly takes one connection at a time. hasuper73 polls every
   10 s and keeps its connection open, so while HA is connected it blocks both
@@ -181,8 +189,9 @@ road-legal mode**. Everything else needs a deliberate opt-in in our tools.
 - [ ] Mode change has a real effect on assist (S2 shows no mode; needs a stand or ride test)
 - [ ] Bonding from the Puck (`startBonding()`)
 - [x] Simultaneous centrals: bike stops advertising while connected, so one at a time
-- [ ] Bond from the first run reused on reconnect (phase 1b)
-- [ ] Reconnect by address time (phase 1b)
-- [ ] Mode reset on power-on (EU) (phase 1b)
-- [ ] Idle auto-off: 5 min or 16 min? Does a connection keep it awake? (phase 1b)
+- [x] Bond from the first run reused on reconnect: yes
+- [x] Reconnect by address time: 4.2–8.7 s on Windows (measure again on the Puck)
+- [x] Mode reset on power-on (EU): yes, back to 4
+- [x] Mode kept across a BLE disconnect: yes (Flo, with the official app)
+- [ ] Idle auto-off: 5 min or 16 min? Does a connection keep it awake? (`phase1b-test.cmd`, step 4)
 - [ ] Slowest connection interval the bike accepts
