@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-11-16
+
+The Puck reports to Home Assistant via BTHome.
 
 - **BTHome v2 adverts** (`src/main.js`): battery %, battery voltage and
   temperature (sampled every 10 min, not during or right after a press), and
@@ -10,6 +12,8 @@
   `S73 Puck` fits next to the BTHome data.
 - **`tools/phase4_test.py`** (`phase4-test.cmd`): guided test for the adverts,
   HA discovery, button events and presence timing.
+- **`docs/handover-hasuper73.md`:** what the hasuper73 session needs to know
+  to stop blocking the Puck (connect, read, disconnect).
 
 ## 0.1.0 - 2026-11-16
 

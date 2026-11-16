@@ -105,6 +105,8 @@ first; it's gone after an add-on restart). Don't edit `.storage` while HA runs.
 Next (recommended order; Flo hasn't picked yet):
 1. **hasuper73 coexistence:** in `f-rakete/hasuper73`, connect, read and
    disconnect instead of holding the connection, so the Puck can get in.
+   A separate Claude session handles hasuper73; handover in
+   `docs/handover-hasuper73.md`.
 2. **Theft alert** (motion while parked): accelerometer, about +40 µA, so
    battery life drops from ~1–1.5 years to ~5 months. Flo's call.
 3. **Phase 3, pre-connect on motion:** about 1 s per press, at the cost of

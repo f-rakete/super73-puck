@@ -19,7 +19,8 @@ read-only, and the protocol work in
 | `tools/puck.py` | Puck console from the PC: run JS, read output, `--flash src/main.js` |
 | `tools/phase1_test.py`, `phase1b_test.py`, `phase4_test.py` | Guided tests that log to `logs/` |
 | `CLAUDE.md` | Working notes for continuing in a new Claude session: devices, workflow, gotchas, next steps |
-| `CHANGELOG.md`, `VERSION` | Release history (current: 0.1.0) |
+| `docs/handover-hasuper73.md` | Notes for the hasuper73 work: why and how to free the bike's connection |
+| `CHANGELOG.md`, `VERSION` | Release history (current: 0.2.0) |
 
 ## Status
 
@@ -32,8 +33,9 @@ from the PC with `tools/puck.py`. `bike.log()` shows the last presses with timin
 keeps its connection open. While Home Assistant is connected to the bike,
 button presses fail with red.
 
-Phase 4 (in progress, 2026-11-16): the Puck's adverts carry BTHome data for
-Home Assistant (see below). Guided test: `phase4-test.cmd`.
+Phase 4 (v0.2.0, 2026-11-16): the Puck's adverts carry BTHome data for Home
+Assistant: battery, voltage, temperature, button events and presence (see
+below). Guided test: `phase4-test.cmd`.
 
 Next steps (recommended order):
 1. Make hasuper73 connect, read and disconnect instead of holding the
