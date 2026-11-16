@@ -190,7 +190,8 @@ road-legal mode**. Everything else needs a deliberate opt-in in our tools.
 - [x] Settings write `00 D1 …` accepted: light toggle (seen on the bike)
 - [x] Settings write `00 D1 …` accepted: mode change (via notifier and re-read)
 - [ ] Mode change has a real effect on assist (S2 shows no mode; needs a stand or ride test)
-- [ ] Bonding from the Puck (`startBonding()`)
+- [x] Bonding from the Puck (`startBonding()`): works, but the bond isn't stored (`bonded:false`), so the Puck re-pairs on every press (~0.4 s)
+- [x] Button end to end (v0.1.0): mode 4 ↔ 7 in 2.9–3.1 s per press, verified by re-read
 - [x] Simultaneous centrals: bike stops advertising while connected, so one at a time
 - [x] Bond from the first run reused on reconnect: yes
 - [x] Reconnect by address time: 4.2–8.7 s on Windows (measure again on the Puck)

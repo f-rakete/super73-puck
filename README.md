@@ -18,6 +18,8 @@ read-only, and the protocol work in
 | `src/main.js` | Puck.js button firmware (Phase 2): short press = mode 4, long press = mode 7 |
 | `tools/puck.py` | Puck console from the PC: run JS, read output, `--flash src/main.js` |
 | `tools/phase1_test.py`, `phase1b_test.py` | Guided bike tests that log to `logs/` |
+| `CLAUDE.md` | Working notes for continuing in a new Claude session: devices, workflow, gotchas, next steps |
+| `CHANGELOG.md`, `VERSION` | Release history (current: 0.1.0) |
 
 ## Status
 
@@ -25,6 +27,16 @@ Phase 2 (2026-11-16): **the button works.** Short press sets mode 4, long press
 (hold until blue, ≥ 1 s) sets mode 7, about 3 s per press including verify.
 The Puck (v2.1, firmware 2v27) advertises as `S73 Puck`. Flash and debug it
 from the PC with `tools/puck.py`. `bike.log()` shows the last presses with timings.
+
+**Known limitation:** the bike accepts one connection at a time, and hasuper73
+keeps its connection open. While Home Assistant is connected to the bike,
+button presses fail with red.
+
+Next steps (recommended order):
+1. Make hasuper73 connect, read and disconnect instead of holding the
+   connection.
+2. Phase 4: BTHome adverts for HA (Puck battery, presses, mode, theft alert).
+3. Phase 3: connect ahead on motion for faster presses.
 
 Phase 1: the write command from Walker73 (`00 D1 <light> <assist> <mode> 00…`
 written to `0000155f-…`) **works on our S2** (2026-11-16). It needs Just Works
