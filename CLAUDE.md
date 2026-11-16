@@ -40,7 +40,7 @@ History: CHANGELOG.md.
 |---|---|---|
 | Model | SUPER73 S2, Comodule display hw `v3.2.0`, fw `221122` | Puck.js **v2.1**, firmware **2v27** (latest: 2v29) |
 | Address | `f5:14:76:b9:41:ba`, random static | `fb:10:30:41:7f:86` |
-| Advertises | `SUPER73`, no service UUID, about every 0.4–1.5 s | `S73 Puck` + BTHome v2 (battery, V, °C, button), every 2 s |
+| Advertises | `SUPER73`, no service UUID, about every 0.4–1.5 s | `S73 Puck` + BTHome v2 (battery, V, °C, button: press / long_press / hold_press), every 2 s |
 | Notes | Just Works bonding required; one connection at a time | Firmware in `.bootcde`; came with the stock "BTHome Button" app (replaced) |
 
 ## Puck workflow
@@ -84,6 +84,10 @@ py tools\puck.py --address FB:10:30:41:7F:86 "bike.read()" --wait 20 # bike must
 - HA (habluetooth) marks a device unavailable ~3 min after its last advert,
   checked every 5 min, so presence "away" lags 3–8 min. The BTHome "sleepy"
   flag must stay clear, or HA keeps the entities available forever.
+- Event latency in HA: `hold_press` ~1 s; `press` / `long_press` with the bike
+  off 6–15 s (the Puck's adverts barely get out while it tries to connect).
+  HA's recorder writes in batches: query the DB a minute after an event, and
+  allow for HA restarts by the hasuper73 session.
 
 ## Next steps
 

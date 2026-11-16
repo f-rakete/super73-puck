@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Hold (≥ 3 s):** the LED turns white and the Puck sends a BTHome
+  `hold_press` event for Home Assistant automations. The bike is not touched,
+  and releasing does nothing. 1–3 s is still the long press (mode 7).
+
 ## 0.2.0 - 2026-11-16
 
 The Puck reports to Home Assistant via BTHome.

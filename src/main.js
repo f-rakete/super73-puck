@@ -4,6 +4,8 @@
 // Short press: mode 4 (EU EPAC, 25 km/h / 250 W) - the bike's power-on mode.
 // Long press (hold until the blue LED lights, >= 1 s): mode 7 (EU OFF-ROAD, unlimited,
 // not road legal in Austria).
+// Hold (>= 3 s, the LED turns white): only a BTHome hold_press event for HA, the bike
+// is not touched (releasing then does nothing).
 //
 // LEDs: blue while holding = long press armed. Short blinks while working.
 // Green = mode 4 set, blue = mode 7 set, 3x red = failed (bike off/out of range/busy).
@@ -24,6 +26,7 @@ var BIKE_ID = "f5:14:76:b9:41:ba random"; // our S2, random static address
 var DEFAULT_MODE = 4;   // EU EPAC
 var UNLIMITED_MODE = 7; // EU OFF-ROAD
 var LONG_PRESS_S = 1.0;
+var HOLD_S = 3.0;
 var TIMEOUT_MS = 15000;
 var RETRIES = 1;
 var SAMPLE_MS = 600000; // battery/temperature every 10 min
@@ -37,6 +40,9 @@ var SETTINGS_ID = [0x03, 0x00];
 var busy = false;
 var working;
 var holdTimer;
+var superTimer;
+var held = false;
+var clearTimer;
 var LOG = [];
 var opStart = 0;
 var sensors;
@@ -174,7 +180,8 @@ function attempt(mode, retries) {
 }
 
 // BTHome v2 service data (bthome.io/format): no encryption, not "sleepy" (bit 2 clear),
-// objects in ascending id order. event: 1 = press, 4 = long press. 30 of 31 advert bytes.
+// objects in ascending id order. event: 1 = press, 4 = long press, 0x80 = hold_press.
+// 30 of 31 advert bytes.
 function bthome(event) {
   packetId = (packetId + 1) & 255; // HA drops repeats of the same packet id
   var t = Math.round(sensors.temp * 100), v = Math.round(sensors.volt * 1000);
@@ -195,10 +202,26 @@ function sample() {
   advertise();
 }
 
+// Drop the button event from the adverts EVENT_MS from now (restarts on each event).
+function clearEventLater() {
+  if (clearTimer) clearTimeout(clearTimer);
+  clearTimer = setTimeout(function () { clearTimer = undefined; if (!busy) advertise(); }, EVENT_MS);
+}
+
 function pressDone() {
   busy = false;
   lastPressEnd = getTime();
-  setTimeout(function () { if (!busy) advertise(); }, EVENT_MS);
+  clearEventLater();
+}
+
+// Held for HOLD_S: tell HA only, don't touch the bike.
+function onHold() {
+  if (busy) { LED3.reset(); blink(LED1, 1, 80); return; }
+  digitalWrite([LED1, LED2, LED3], 7); // white until released
+  opStart = getTime();
+  log("hold -> HA only");
+  advertise(0x80);
+  clearEventLater();
 }
 
 function onPress(isLong) {
@@ -225,18 +248,22 @@ function onPress(isLong) {
 
 sample();
 // the coin cell's voltage sags during and shortly after a press: skip those samples
+// (and while a button event is still in the adverts, so a sample can't cut it short)
 setInterval(function () {
-  if (!busy && getTime() - lastPressEnd > 60) sample();
+  if (!busy && !clearTimer && getTime() - lastPressEnd > 60) sample();
 }, SAMPLE_MS);
 
 setWatch(function (e) {
   if (e.state) {
+    held = false;
     holdTimer = setTimeout(function () { holdTimer = undefined; LED3.set(); }, LONG_PRESS_S * 1000);
+    superTimer = setTimeout(function () { superTimer = undefined; held = true; onHold(); }, HOLD_S * 1000);
   } else {
     if (holdTimer) clearTimeout(holdTimer);
-    holdTimer = undefined;
-    LED3.reset();
-    onPress(e.time - e.lastTime >= LONG_PRESS_S);
+    if (superTimer) clearTimeout(superTimer);
+    holdTimer = superTimer = undefined;
+    digitalWrite([LED1, LED2, LED3], 0);
+    if (!held) onPress(e.time - e.lastTime >= LONG_PRESS_S);
   }
 }, BTN, { edge: "both", repeat: true, debounce: 50 });
 

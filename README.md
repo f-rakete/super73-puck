@@ -54,8 +54,9 @@ mode 5 really changes the assist. See the "Confirmed on our S2" section in
 ## Home Assistant (BTHome)
 
 The Puck advertises BTHome v2 every 2 s, unencrypted: battery %, battery
-voltage and temperature (sampled every 10 min), plus a button event (`press` /
-`long_press`) for about 10 s after a press. HA discovers it as a BTHome device
+voltage and temperature (sampled every 10 min), plus a button event for about
+10 s after a press: `press` (mode 4), `long_press` (1–3 s, mode 7) or
+`hold_press` (≥ 3 s, the LED turns white; HA only, the bike is not touched). HA discovers it as a BTHome device
 named `S73 Puck 7F86`; ours is renamed to `S73 Puck`, so its entities are
 `sensor.s73_puck_batterie`, `…_spannung`, `…_temperatur` and
 `event.s73_puck_taste` (German UI). The ride mode is not sent: the Puck only
