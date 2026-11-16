@@ -15,9 +15,16 @@ read-only, and the protocol work in
 |---|---|
 | `docs/protocol.md` | GATT services, register frames, settings-write payload, ride modes, open questions |
 | `tools/set_mode.py` | PC test tool (Python + bleak): read settings, write mode/light, verify |
-| `src/main.js` | Puck.js REPL helpers that replay the same write (Phase 1, untested) |
+| `src/main.js` | Puck.js button firmware (Phase 2): short press = mode 4, long press = mode 7 |
+| `tools/puck.py` | Puck console from the PC: run JS, read output, `--flash src/main.js` |
+| `tools/phase1_test.py`, `phase1b_test.py` | Guided bike tests that log to `logs/` |
 
 ## Status
+
+Phase 2 (2026-11-16): **the button works.** Short press sets mode 4, long press
+(hold until blue, ≥ 1 s) sets mode 7, about 3 s per press including verify.
+The Puck (v2.1, firmware 2v27) advertises as `S73 Puck`. Flash and debug it
+from the PC with `tools/puck.py`. `bike.log()` shows the last presses with timings.
 
 Phase 1: the write command from Walker73 (`00 D1 <light> <assist> <mode> 00…`
 written to `0000155f-…`) **works on our S2** (2026-11-16). It needs Just Works

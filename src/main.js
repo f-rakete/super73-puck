@@ -91,7 +91,7 @@ function session(fn) {
       // resolve only once the link is down, so a retry can connect again
       if (gatt && gatt.connected) {
         gatt.disconnect().then(end, end);
-        setTimeout(end, 3000);
+        setTimeout(end, 1500); // the disconnect promise sometimes never resolves
       } else end();
     }
     log("connecting");
@@ -183,6 +183,10 @@ function onPress(isLong) {
     blink(LED1, 3, 150);
   });
 }
+
+// Own name (the previous owner's app left "Sensor"). Not "SUPER73...": hasuper73 and
+// tools/ find the bike by that prefix. 2 s advertising interval keeps idle power low.
+NRF.setAdvertising({}, { name: "S73 Puck", interval: 2000 });
 
 setWatch(function (e) {
   if (e.state) {
