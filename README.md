@@ -29,7 +29,18 @@ gate for everything else.
    `py -m pip install -r tools/requirements.txt`.
 2. Free the bike's BLE connection. Disable the hasuper73 integration in Home
    Assistant (or move out of proxy range) and close the SUPER73 app.
-3. Switch the bike on next to the PC, standing still, then step through:
+3. Switch the bike on next to the PC, standing still, and double-click
+   `phase1-test.cmd` (or run `py tools\phase1_test.py`).
+
+The guided test runs every check below in order, asks you what you see on the
+bike, and logs everything to `logs/phase1-<timestamp>.log`. The `logs/` folder
+is git-ignored. Steps:
+scan and advertising data, GATT dump, device info, all registers, advertising
+while connected, light write, mode write (5 → 4), the bike's own buttons,
+restore, reconnect timing, and two optional ones: mode after power-on and idle
+auto-off. It always leaves the bike in mode 4.
+
+To run single commands by hand instead:
 
    ```powershell
    py tools/set_mode.py                                # read only: address + current settings
