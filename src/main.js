@@ -11,7 +11,9 @@
 // the mode keeping light/assist, verifies, disconnects. Gives up after TIMEOUT_MS,
 // retries once.
 //
-// REPL helpers (py tools/puck.py "..."): bike.read(), bike.setMode(m, allowUnrestricted)
+// REPL helpers (py tools/puck.py "..."): bike.log(), bike.read(), bike.setMode(m, allowUnrestricted)
+// Connecting to the bike drops a console connection to the Puck, so everything a
+// press does is kept in a RAM log: read it afterwards with bike.log().
 
 var BIKE_ID = "f5:14:76:b9:41:ba random"; // our S2, random static address
 var DEFAULT_MODE = 4;   // EU EPAC
@@ -28,6 +30,15 @@ var SETTINGS_ID = [0x03, 0x00];
 var busy = false;
 var working;
 var holdTimer;
+var LOG = [];
+var opStart = 0;
+
+function log(s) {
+  var line = new Date().toISOString().substr(11, 8) + " +" + (getTime() - opStart).toFixed(1) + "s " + s;
+  print(line);
+  LOG.push(line);
+  if (LOG.length > 60) LOG.shift();
+}
 
 function blink(led, n, ms) {
   var i = 0;
@@ -74,14 +85,17 @@ function session(fn) {
       if (gatt && gatt.connected) gatt.disconnect();
       if (err) reject(err); else resolve(value);
     }
+    log("connecting");
     NRF.connect(BIKE_ID).then(function (g) {
       gatt = g;
       if (done) { gatt.disconnect(); throw "timeout"; }
+      log("connected");
       return gatt.startBonding(false).catch(function (e) {
-        print("bonding failed (" + e + "), re-pairing");
+        log("bonding failed (" + e + "), re-pairing");
         return gatt.startBonding(true);
       });
     }).then(function () {
+      log("secure " + JSON.stringify(gatt.getSecurityStatus()));
       return gatt.getPrimaryService(SVC);
     }).then(function (svc) {
       return svc.getCharacteristic(CHR_REGISTER_ID).then(function (c) {
@@ -107,14 +121,14 @@ function readSettings(chrId, chrReg) {
 function setMode(mode) {
   return session(function (chrId, chrReg) {
     return readSettings(chrId, chrReg).then(function (cur) {
-      print("bike: " + cur.raw);
+      log("bike: " + cur.raw);
       if (cur.mode == mode) return cur;
       return chrReg.writeValue([0x00, 0xD1, cur.light, cur.assist, mode, 0, 0, 0, 0, 0]).then(function () {
         return delay(300);
       }).then(function () {
         return readSettings(chrId, chrReg);
       }).then(function (now) {
-        print("now:  " + now.raw);
+        log("now:  " + now.raw);
         if (now.mode != mode) throw "mode not applied";
         return now;
       });
@@ -125,7 +139,7 @@ function setMode(mode) {
 function attempt(mode, retries) {
   return setMode(mode).catch(function (e) {
     if (retries <= 0) throw e;
-    print("retrying after: " + e);
+    log("retrying after: " + e);
     return attempt(mode, retries - 1);
   });
 }
@@ -135,17 +149,18 @@ function onPress(isLong) {
   var mode = isLong ? UNLIMITED_MODE : DEFAULT_MODE;
   var led = isLong ? LED3 : LED2;
   busy = true;
-  print((isLong ? "long" : "short") + " press -> mode " + mode);
+  opStart = getTime();
+  log((isLong ? "long" : "short") + " press -> mode " + mode);
   startWorking(led);
   attempt(mode, RETRIES).then(function (s) {
     stopWorking();
     busy = false;
-    print("mode " + s.mode + " ok");
+    log("OK mode " + s.mode);
     blink(led, 1, 600);
   }, function (e) {
     stopWorking();
     busy = false;
-    print("failed: " + e);
+    log("FAILED: " + e);
     blink(LED1, 3, 150);
   });
 }
@@ -162,7 +177,9 @@ setWatch(function (e) {
 }, BTN, { edge: "both", repeat: true, debounce: 50 });
 
 var bike = {
+  log: function () { print(LOG.join("\n")); },
   read: function () {
+    opStart = getTime();
     return session(readSettings).then(function (s) {
       print(s.raw + "  mode " + s.mode + ", assist " + s.assist + ", light " + s.light);
     }).catch(function (e) { print("failed: " + e); });
@@ -170,6 +187,7 @@ var bike = {
   setMode: function (mode, allowUnrestricted) {
     if (!(mode >= 0 && mode <= 7)) return print("mode must be 0-7");
     if (mode != DEFAULT_MODE && !allowUnrestricted) return print("use bike.setMode(" + mode + ", true)");
+    opStart = getTime();
     return setMode(mode).then(function (s) { print("mode " + s.mode + " ok"); },
                               function (e) { print("failed: " + e); });
   }
