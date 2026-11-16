@@ -20,7 +20,7 @@ read-only, and the protocol work in
 | `tools/phase1_test.py`, `phase1b_test.py`, `phase4_test.py` | Guided tests that log to `logs/` |
 | `CLAUDE.md` | Working notes for continuing in a new Claude session: devices, workflow, gotchas, next steps |
 | `docs/handover-hasuper73.md` | Notes for the hasuper73 work: why and how to free the bike's connection |
-| `CHANGELOG.md`, `VERSION` | Release history (current: 0.2.0) |
+| `CHANGELOG.md`, `VERSION` | Release history (current: 0.3.0) |
 
 ## Status
 
@@ -35,7 +35,8 @@ button presses fail with red.
 
 Phase 4 (v0.2.0, 2026-11-16): the Puck's adverts carry BTHome data for Home
 Assistant: battery, voltage, temperature, button events and presence (see
-below). Guided test: `phase4-test.cmd`.
+below). Guided test: `phase4-test.cmd`. Since v0.3.0 a 3 s hold (LED turns
+white) sends a `hold_press` event for HA automations without touching the bike.
 
 Next steps (recommended order):
 1. Make hasuper73 connect, read and disconnect instead of holding the
